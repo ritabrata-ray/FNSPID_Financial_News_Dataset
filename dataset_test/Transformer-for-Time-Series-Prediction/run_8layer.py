@@ -161,7 +161,7 @@ def train_model(dataloader_train, pred_flag, symbol ,num_csvs, mode, d_input):
   if os.path.exists(model_path):
     model.load_state_dict(torch.load(model_path, map_location=device))
     print(f"Loaded model from {model_path} onto {'CUDA' if torch.cuda.is_available() else 'CPU'}")
-
+    return model
   if pred_flag:
     epochs = 50
   else:
@@ -182,13 +182,15 @@ def train_model(dataloader_train, pred_flag, symbol ,num_csvs, mode, d_input):
       # use fancy training percentage bar
       with tqdm(total=len(dataloader_train.dataset), desc=f"[Epoch {idx_epoch+1:3d}/{epochs}]") as pbar:
           for idx_batch, (x, y) in enumerate(dataloader_train):
+              # breakpoint()
               optimizer.zero_grad()
 
               # Propagate input
               y_pred = model(x.to(device))
 
               # Comupte loss
-              loss = loss_function(y.to(device), y_pred)
+              # breakpoint()
+              loss = loss_function(y.to(device), y_pred[:,-1,:])
 
               # Backpropage loss
               loss.backward()
@@ -231,8 +233,9 @@ def eval_model(data ,model, dataloader_test, symbol, mode, num_csvs, scaler):
 
           predictions.append(modelout.cpu().numpy())
           actuals.append(y.cpu().numpy())
-      predictions_np = np.concatenate(predictions, axis=0)
+      predictions_np = np.concatenate(predictions, axis=0)[:,-1,:]
       actuals_np = np.concatenate(actuals, axis=0) 
+      # breakpoint()
       y_pred_reshaped = predictions_np.reshape(actuals_np.shape)
       print('y_pred_reshaped', y_pred_reshaped.shape)
       # Reshape y_pred_np to have the same shape as y_test
@@ -551,11 +554,11 @@ names_50 = [
 # pred_names = ['fakedata']
 pred_names = ['KO','AMD',"TSM","GOOG",'WMT']
 
-names = names_50
+names = names_5
 # num_stocks = 1
-# num_stocks = len(names)
+num_stocks = len(names)
 # num_stocks = 50
-num_stocks = 50
+# num_stocks = 50
 
 
 
@@ -572,5 +575,5 @@ for i in range(2):
       csv_data = read_csv_case_insensitive(os.path.join("data", name))
       symbol_name = name.split('.')[0]
       print(symbol_name)
-      sentiment_predict(csv_data, symbol_name, num_stocks, if_pred, pred_names)
+      # sentiment_predict(csv_data, symbol_name, num_stocks, if_pred, pred_names)
       nonsentiment_predict(csv_data, symbol_name, num_stocks, if_pred, pred_names)

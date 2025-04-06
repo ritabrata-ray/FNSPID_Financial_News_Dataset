@@ -132,7 +132,7 @@ def train_model(dataloader_train, pred_flag, symbol ,num_csvs, d_input):
       ``None``.
   """
     # Model parameters
-  d_output = d_input # prediction length be 6, this is confirmed
+  d_output = d_input*3 # prediction length be 6, this is confirmed
   d_model = 32 # Lattent dim
   q = 8 # Query size
   v = 8 # Value size
@@ -149,6 +149,7 @@ def train_model(dataloader_train, pred_flag, symbol ,num_csvs, d_input):
   model = Transformer(d_input, d_model, d_output, q, v, h, N, attention_size=attention_size, dropout=dropout, chunk_mode=chunk_mode, pe=pe).to(device)
   # model = TimeSeriesTransformer(num_features, num_outputs, dim_val, n_heads, n_decoder_layers, dropout_rate).to(device)
   # print(model)
+  breakpoint()
 
   model_path = f'model_saved/_{num_csvs}_{N}layers.pt'
 
@@ -182,9 +183,9 @@ def train_model(dataloader_train, pred_flag, symbol ,num_csvs, d_input):
               
               # Propagate input
               y_pred = model(x.to(device)) # torch.Size([64, 50, 6])
-
-              y_pred_reshaped = y_pred[:, -int(output_length):, :]  # Take the last 3 slices along the second dimension, 本来是50个element的， 解码的时候我们只关心最后的三个
-
+              y_pred_reshaped = y_pred[:, -1, :]  # Take the last 3 slices along the second dimension, 本来是50个element的， 解码的时候我们只关心最后的三个
+              y_pred_reshaped = y_pred_reshaped.reshape(y_pred_reshaped.shape[0], 3,5)
+            #   breakpoint()
               # Comupte loss
               loss = loss_function(y.to(device), y_pred_reshaped) # [64,3,6] & [64,3,6] 
               # y shape is torch.Size([64, 50, 6])
@@ -226,7 +227,7 @@ def eval_model(model, dataloader_test, symbol, num_csvs, scaler, output_length):
         # for x, y in enumerate(dataloader_test):
         for x, y in dataloader_test:
           modelout_pre  = model(x.to(device))
-          modelout = modelout_pre[:, -int(output_length):, :]
+          modelout = modelout_pre[:, -1, :].reshape(modelout_pre.shape[0],3,5)
           # print('modelout',modelout.shape)
           predictions.append(modelout.cpu().numpy())
           actuals.append(y.cpu().numpy())
@@ -238,8 +239,8 @@ def eval_model(model, dataloader_test, symbol, num_csvs, scaler, output_length):
       actuals_np = np.concatenate(actuals, axis=0) # (155, 3, 6)
       
       
-      y_pred_reshaped = predictions_np.reshape(-1, 6)
-      y_test_reshaped = actuals_np.reshape(-1, 6)
+      y_pred_reshaped = predictions_np.reshape(-1, 5)
+      y_test_reshaped = actuals_np.reshape(-1, 5)
       print('y_pred_reshaped', y_pred_reshaped.shape)
       print('y_test_reshaped', y_test_reshaped.shape)
 
@@ -309,10 +310,10 @@ def eval_model(model, dataloader_test, symbol, num_csvs, scaler, output_length):
           'Predicted_Data_Close': y_pred_reshaped[4],  # Assuming this is correct
           'True_Data_origin_Close': y_test_origin[4],  # Assuming this is correct
           'Predicted_Data_origin_Close': y_pred_origin[4],  # Assuming this is correct
-          'True_Data_Scaled_sentiment': y_test_reshaped[5],  # Assuming this is correct
-          'Predicted_Data_Scaled_sentiment': y_pred_reshaped[5],  # Assuming this is correct
-          'True_Data_origin_Scaled_sentiment': y_test_origin[5],  # Assuming this is correct
-          'Predicted_Data_origin_Scaled_sentiment': y_pred_origin[5]  # Assuming this is correct
+        #   'True_Data_Scaled_sentiment': y_test_reshaped[5],  # Assuming this is correct
+        #   'Predicted_Data_Scaled_sentiment': y_pred_reshaped[5],  # Assuming this is correct
+        #   'True_Data_origin_Scaled_sentiment': y_test_origin[5],  # Assuming this is correct
+        #   'Predicted_Data_origin_Scaled_sentiment': y_pred_origin[5]  # Assuming this is correct
       })
 
       saving_folder = os.path.join(f"test_result_{num_csvs}",f"{symbol}_{date_str}")
@@ -330,7 +331,8 @@ def eval_model(model, dataloader_test, symbol, num_csvs, scaler, output_length):
 
 def sentiment_predict(csv_data,symbol, num_csvs, pred_flag, pred_names):
   # Select relevant columns and calculate d_input before converting to NumPy array
-  selected_columns = ['Volume', 'Open', 'High', 'Low', 'Close', 'Scaled_sentiment']
+  selected_columns = ['Volume', 'Open', 'High', 'Low', 'Close']
+#   selected_columns = ['Volume', 'Open', 'High', 'Low', 'Close', 'Scaled_sentiment']
   data = csv_data[selected_columns].values
   d_input = len(selected_columns)  # Number of input features, should be 6   [N, M, 6] 其中的的6
 
@@ -369,7 +371,7 @@ names_50 = [
 # pred_names = ['TSM']
 pred_names = ['KO','AMD',"TSM","GOOG",'WMT']
 
-names = names_50
+names = names_5
 # num_stocks = 1
 # num_stocks = len(names)
 # num_stocks = 50
