@@ -161,7 +161,7 @@ def train_model(dataloader_train, pred_flag, symbol ,num_csvs, mode, d_input):
   if os.path.exists(model_path):
     model.load_state_dict(torch.load(model_path, map_location=device))
     print(f"Loaded model from {model_path} onto {'CUDA' if torch.cuda.is_available() else 'CPU'}")
-    return model
+    # return model
   if pred_flag:
     epochs = 50
   else:
@@ -222,6 +222,7 @@ def train_model(dataloader_train, pred_flag, symbol ,num_csvs, mode, d_input):
 def eval_model(data ,model, dataloader_test, symbol, mode, num_csvs, scaler):
       scaler = MinMaxScaler()
       scaler.fit_transform(data)
+      breakpoint()
       # Prediction on test data
       predictions = []
       actuals = []
