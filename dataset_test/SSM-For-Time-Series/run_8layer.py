@@ -13,6 +13,7 @@ from tst import Transformer
 from tqdm import tqdm
 import glob
 from tst.model_based_portfolio import *
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 # # Function to create sequences
@@ -22,17 +23,6 @@ from tst.model_based_portfolio import *
 #         X.append(data[i:(i + input_length)])
 #         y.append(data[(i + input_length):(i + input_length + output_length), 2])  # 2 is the index of 'Close' in input_features
 #     return np.array(X), np.array(y)
-
-def create_sequences(data, input_length, output_length):
-    X, y = [], []
-    for i in range(len(data) - input_length - output_length):
-        X.append(data[i:(i + input_length),:3])
-        # y.append(data[(i + input_length):(i + input_length + output_length), 2])  # Extracting only the 'Close' values
-        y.append(data[i + input_length - 1, 3:4])  # 2 is the index of 'Close' in input_features 2:3 to make the shape as (data_length,1)
-        # print(y)
-    X = np.array(X)
-    y = np.array(y)
-    return X, y
 
 
 
@@ -62,11 +52,9 @@ def append_mid_returns(data):
     open_prices = data[:, 1]
     close_prices = data[:, 2]
     mid_prices = 0.5 * (open_prices + close_prices)
-
     # Compute forward returns for days 0 to n-2
     returns = (mid_prices[1:] - mid_prices[:-1]) / mid_prices[:-1]
     returns = returns.reshape(-1, 1)
-
     # Drop last row from data and append returns
     data_trimmed = data[:-1]
     result = np.hstack((data_trimmed, returns))  # shape (n-1, 4)
@@ -74,17 +62,27 @@ def append_mid_returns(data):
 
 
 
-def data_processor(data):
+def data_processor(data, num_features):
   # Checking if GPU is available
   device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
   # print('device = ',device)
 
-  # Scaling the data
-  scaler_X = StandardScaler()
-  scaler_Y= StandardScaler()
-  data  = append_mid_returns(data)
-  data[:, :3] = scaler_X.fit_transform(data[:,:3])
-  data[:, 3:4] = scaler_Y.fit_transform(data[:,3:4])
+  data = append_mid_returns(data)
+  split_ratio = 0.85
+  split = int(split_ratio * len(data))
+  data_train = data[:split]
+  data_test = data[split:]
+
+  # Fit scalers only on training set
+  scaler_X = StandardScaler().fit(data_train[:, :num_features])
+  scaler_Y = StandardScaler().fit(data_train[:, num_features:num_features+1])
+
+  # Apply to both sets
+  data_train[:, :num_features] = scaler_X.transform(data_train[:, :num_features])
+  data_train[:, num_features:num_features+1] = scaler_Y.transform(data_train[:, num_features:num_features+1])
+
+  data_test[:, :num_features] = scaler_X.transform(data_test[:, :num_features])
+  data_test[:, num_features:num_features+1] = scaler_Y.transform(data_test[:, num_features:num_features+1])
   # scaled_data = scaler.fit_transform(data)
   # breakpoint()
   # Creating sequences
@@ -92,17 +90,18 @@ def data_processor(data):
   output_length = 1
 
   # Split training data into training and validation sets
-  split_ratio = 0.85
-  split = int(split_ratio * len(data))
-  data_train = data[:split]
-  data_test = data[split:]
-  # data_train = scaler_train.fit_transform(data_train)
-  # data_test = scaler_test.fit_transform(data_test)
-  # breakpoint()
-  # Splitting the dataset into training and testing sets (80-20 split)
-  X_train, y_train = data_train[:,:3], data_train[:,3:4]
-  X_test, y_test = data_test[:,:3], data_test[:,3:4]
-  
+
+  # split = int(split_ratio * len(data))
+  # data_train = data[:split]
+  # data_test = data[split:]
+  # # data_train = scaler_train.fit_transform(data_train)
+  # # data_test = scaler_test.fit_transform(data_test)
+  # # breakpoint()
+  # # Splitting the dataset into training and testing sets (80-20 split)
+  X_train, y_train = data_train[:,:num_features], data_train[:,num_features:num_features+1]
+  X_test, y_test = data_test[:,:num_features], data_test[:,num_features:num_features+1]
+  # print(X_train)
+  # print(y_train)
 
   # Displaying the shapes of the datasets to ensure correctness
   print('X_train: ',X_train.shape, 'X_test', X_test.shape, 'y_train', y_train.shape, 'y_test',y_test.shape)
@@ -185,7 +184,7 @@ def train_model(data_train, pred_flag, symbol ,num_csvs, mode, d_input):
     print(f"Loaded model from {model_path} onto {'CUDA' if torch.cuda.is_available() else 'CPU'}")
     # return model
   if pred_flag:
-    epochs = 25
+    epochs = 100
   else:
     epochs = 50
 
@@ -338,12 +337,11 @@ def sentiment_predict(csv_data,symbol, num_csvs, pred_flag, pred_names):
   d_input = 4  # this one should be 4 assume it is 'Volume','Open', 'Close', 'Scaled_sentiment'
   # Selecting relevant columns: 'Volume', 'Open', 'Close', and 'Scaled_sentiment'
   data = csv_data[['Volume', 'Open', 'Close', 'Scaled_sentiment']].values
-  dataloader_train, dataloader_test, scaler_X, scaler_Y = data_processor(data)
+  dataloader_train, dataloader_test, scaler_X, scaler_Y = data_processor(data, 4)
   model = train_model(dataloader_train, pred_flag, symbol ,num_csvs, mode, d_input)
 
-  if pred_flag:
-    if symbol in pred_names:
-      eval_model(data, model, dataloader_test, symbol, mode, num_csvs, scaler_X, scaler_Y)
+  return eval_model(model, dataloader_test, symbol, mode, num_csvs, scaler_X, scaler_Y)
+
 
 
 
@@ -353,65 +351,66 @@ def nonsentiment_predict(csv_data,symbol, num_csvs, pred_flag, pred_names):
   # Preparing the data for the model
   # Selecting relevant columns: 'Volume', 'Open', 'Close', and 'Scaled_sentiment'
   data = csv_data[['Volume', 'Open', 'Close']].values
-  dataloader_train, dataloader_test, scaler_X, scaler_Y = data_processor(data)
+  dataloader_train, dataloader_test, scaler_X, scaler_Y = data_processor(data, 3)
   model = train_model(dataloader_train, pred_flag, symbol ,num_csvs, mode, d_input)
 
   return eval_model(model, dataloader_test, symbol, mode, num_csvs, scaler_X, scaler_Y)
   return None, None
-
-# Test of 5 
+    # Test of 5 
 # names_5 = ['KO.csv', 'AMD.csv', 'TSM.csv', 'GOOG.csv','WMT.csv']
 names_5 = ['KO.csv', 'AMD.csv', 'TSM.csv','WMT.csv']
 
-# names_5 = ['KO.csv']
+  # names_5 = ['KO.csv']
 
-# Test of 25 
+  # Test of 25 
 names_25 = [
-   'AAPL.csv', 'ABBV.csv','BABA.csv', 'BRK-B.csv',
-            'bhp.csv', 'C.csv', 'COST.csv', 'CVX.csv','DIS.csv', 'GE.csv',
-         'INTC.csv', 'MSFT.csv', 'nvda.csv', 'pypl.csv','QQQ.csv', 'SBUX.csv', 'T.csv', 'TSLA.csv', 'WFC.csv', 'gsk.csv',
-         'KO.csv', 'AMD.csv', 'TSM.csv', 'GOOG.csv', 'WMT.csv'] # 'AMZN.csv'
-# Tes of 50
+    'AAPL.csv', 'ABBV.csv','BABA.csv', 'BRK-B.csv',
+              'bhp.csv', 'C.csv', 'COST.csv', 'CVX.csv','DIS.csv', 'GE.csv',
+          'INTC.csv', 'MSFT.csv', 'nvda.csv', 'pypl.csv','QQQ.csv', 'SBUX.csv', 'T.csv', 'TSLA.csv', 'WFC.csv', 'gsk.csv',
+          'KO.csv', 'AMD.csv', 'TSM.csv', 'GOOG.csv', 'WMT.csv'] # 'AMZN.csv'
+  # Tes of 50
 names_50 = [
-   'aal.csv', 'AAPL.csv', 'ABBV.csv', 'amgn.csv','BABA.csv', 'bhp.csv','biib.csv', 'bidu.csv', 'BRK-B.csv','C.csv', 'cat.csv', 'cmcsa.csv', 
-   'cmg.csv', 'cop.csv', 'COST.csv', 'crm.csv', 'CVX.csv', 'DIS.csv', 'ebay.csv','GE.csv','gild.csv', 'gld.csv', 'gsk.csv', 'INTC.csv',
-     'mrk.csv', 'MSFT.csv', 'mu.csv', 'nke.csv', 'nvda.csv', 'orcl.csv', 'pep.csv', 'pypl.csv', 'qcom.csv', 'QQQ.csv', 'SBUX.csv', 'T.csv',
-      'tgt.csv', 'tm.csv', 'TSLA.csv', 'uso.csv', 'v.csv', 'WFC.csv', 'xlf.csv','KO.csv', 'AMD.csv', 'TSM.csv', 'GOOG.csv', 'WMT.csv', ] #'AMZN.csv' 'dal.csv',
+    'aal.csv', 'AAPL.csv', 'ABBV.csv', 'amgn.csv','BABA.csv', 'bhp.csv','biib.csv', 'bidu.csv', 'BRK-B.csv','C.csv', 'cat.csv', 'cmcsa.csv', 
+    'cmg.csv', 'cop.csv', 'COST.csv', 'crm.csv', 'CVX.csv', 'DIS.csv', 'ebay.csv','GE.csv','gild.csv', 'gld.csv', 'gsk.csv', 'INTC.csv',
+      'mrk.csv', 'MSFT.csv', 'mu.csv', 'nke.csv', 'nvda.csv', 'orcl.csv', 'pep.csv', 'pypl.csv', 'qcom.csv', 'QQQ.csv', 'SBUX.csv', 'T.csv',
+        'tgt.csv', 'tm.csv', 'TSLA.csv', 'uso.csv', 'v.csv', 'WFC.csv', 'xlf.csv','KO.csv', 'AMD.csv', 'TSM.csv', 'GOOG.csv', 'WMT.csv', ] #'AMZN.csv' 'dal.csv',
 
 
 
-# names_1 = ['GOOG.csv']
-# names_1 = ['fakedata.csv',]
-# pred_names = ['fakedata']
+  # names_1 = ['GOOG.csv']
+  # names_1 = ['fakedata.csv',]
+  # pred_names = ['fakedata']
 
 
 names = names_25
 pred_names = names
-# num_stocks = 1
+  # num_stocks = 1
 num_stocks = len(names)
-# num_stocks = 50
-# num_stocks = 50
+  # num_stocks = 50
+  # num_stocks = 50
+
+if __name__ == "__main__":
 
 
 
-if_pred = True
-  # for sentiment_type in sentiment_types:
-historical = []
-predicted = []
-for name in names:
-      # Checking if GPU is available
-      device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-      print('device = ',device)
+  if_pred = True
+    # for sentiment_type in sentiment_types:
+  historical = []
+  predicted = []
+  for name in names:
+        # Checking if GPU is available
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print('device = ',device)
 
-      csv_data = read_csv_case_insensitive(os.path.join("data", name))
-      symbol_name = name.split('.')[0]
-      print(symbol_name)
-      # sentiment_predict(csv_data, symbol_name, num_stocks, if_pred, pred_names)
-      y_true, y_pred = nonsentiment_predict(csv_data, symbol_name, num_stocks, True, names)
-      historical.append(y_true)
-      predicted.append(y_pred)
-    # print(historical[0].shape)
-min_days = min(a.shape[0] for a in historical)
-historical = np.array([a[:min_days].squeeze() for a in historical])
-min_days = min(a.shape[0] for a in predicted)
-predicted = np.array([a[:min_days].squeeze() for a in predicted])
+        csv_data = read_csv_case_insensitive(os.path.join("data", name))
+        symbol_name = name.split('.')[0]
+        print(symbol_name)
+        # sentiment_predict(csv_data, symbol_name, num_stocks, if_pred, pred_names)
+        y_true, y_pred = sentiment_predict(csv_data, symbol_name, num_stocks, True, names)
+        historical.append(y_true)
+        predicted.append(y_pred)
+      # print(historical[0].shape)
+  min_days = min(a.shape[0] for a in historical)
+  historical = np.array([a[:min_days].squeeze() for a in historical])
+  min_days = min(a.shape[0] for a in predicted)
+  predicted = np.array([a[:min_days].squeeze() for a in predicted])
