@@ -90,7 +90,7 @@ class Transformer(nn.Module):
         self.layers_encoding = nn.ModuleList([S4Block(d_model=d_model) for _ in range(N)])
         self.layers_decoding = nn.ModuleList([S4Block(d_model=d_model) for _ in range(N)])
 
-        self._embedding = nn.Linear(3, d_model)
+        self._embedding = nn.Linear(d_input, d_model)
         self._linear = nn.Linear(d_model, d_output)
 
         pe_functions = {

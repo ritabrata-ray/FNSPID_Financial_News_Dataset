@@ -1650,7 +1650,7 @@ class FFTConv(nn.Module):
         l_max=None,
         channels=1,
         swap_channels=False,
-        bidirectional=True,
+        bidirectional=False,
         activation='gelu', # Activation after layer
         transposed=True,
         dropout=0.0,
