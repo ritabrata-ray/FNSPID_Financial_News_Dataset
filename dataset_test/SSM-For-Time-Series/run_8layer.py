@@ -68,7 +68,7 @@ def data_processor(data, num_features):
   # print('device = ',device)
 
   data = append_mid_returns(data)
-  split_ratio = 0.85
+  split_ratio = 0.80
   split = int(split_ratio * len(data))
   data_train = data[:split]
   data_test = data[split:]
@@ -184,7 +184,7 @@ def train_model(data_train, pred_flag, symbol ,num_csvs, mode, d_input):
     print(f"Loaded model from {model_path} onto {'CUDA' if torch.cuda.is_available() else 'CPU'}")
     # return model
   if pred_flag:
-    epochs = 100
+    epochs = 50
   else:
     epochs = 50
 
@@ -227,15 +227,39 @@ def train_model(data_train, pred_flag, symbol ,num_csvs, mode, d_input):
               
   print("Training complete.")
           
-  plt.plot(hist_loss, 'o-', label='train')
-  plt.legend()  
-  plt.savefig(os.path.join("plot_saved", f"{symbol}_{mode}_{num_stocks}_training_curve.pdf"))
+  # plt.plot(hist_loss, 'o-', label='train')
+  # plt.legend()  
+  # plt.savefig(os.path.join("plot_saved", f"{symbol}_{mode}_{num_stocks}_training_curve.pdf"))
   # Save the model
   os.makedirs(os.path.join("model_saved"), exist_ok=True)
   torch.save(model.state_dict(), model_path)
   print(f"saved model into {model_path}")
 
   return model
+
+def correlation(a, b):
+    a = a.squeeze()  # shape: (days,)
+    b = b.squeeze()
+    return np.corrcoef(a, b)[0, 1]
+
+def unnormalized_directional_accuracy(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    """
+    Computes the plain directional accuracy between y_true and y_pred.
+    
+    Args:
+        y_true: np.ndarray of shape (days, 1) - true returns
+        y_pred: np.ndarray of shape (days, 1) - predicted returns
+
+    Returns:
+        Directional accuracy (float)
+    """
+    y_true = y_true.flatten()
+    y_pred = y_pred.flatten()
+
+    correct = np.sum((y_true > 0) == (y_pred > 0))
+
+    return correct / len(y_true)
+
 
 def eval_model(model, data_test, symbol, mode, num_csvs, scaler_X, scaler_Y):
       # scaler_X = StandardScaler()
@@ -274,28 +298,36 @@ def eval_model(model, data_test, symbol, mode, num_csvs, scaler_X, scaler_Y):
       # Calculate metrics
       mse = mean_squared_error(y_test_flattened, y_pred_flattened)
       mae = mean_absolute_error(y_test_flattened, y_pred_flattened)
-      r2 = r2_score(y_test_flattened, y_pred_flattened)
+      r2 = correlation(scaler_Y.inverse_transform(y_pred_flattened), scaler_Y.inverse_transform(y_test_flattened))
+      dir_acc = unnormalized_directional_accuracy(scaler_Y.inverse_transform(y_pred_flattened), scaler_Y.inverse_transform(y_test_flattened))
       print(f"MSE: {mse}, MAE: {mae}, R^2: {r2}")
+      metrics = {
+            'MAE': [mae],
+            'MSE': [mse],
+            'R2': [r2],
+            'dir_acc' : [dir_acc]
+        }
       eval_df = pd.DataFrame({
             'MAE': [mae],
             'MSE': [mse],
-            'R2': [r2]
+            'R2': [r2],
+            'dir_acc' : [dir_acc]
         })
 
       # Create the directory for saving plots if it doesn't exist
-      os.makedirs("plot_saved", exist_ok=True)
+      # os.makedirs("plot_saved", exist_ok=True)
 
-      # Plotting the results
-      plt.figure(figsize=(10, 6))
-      plt.plot(y_test_flattened, label="Ground Truth", color='blue')  # Assuming y_test_flattened is defined
-      plt.plot(y_pred_flattened, label="Predicted", color='red')  # Assuming y_pred_flattened is defined
-      plt.title(f"{symbol} - {mode}: Ground Truth vs Predicted")
-      plt.xlabel("Time Steps")
-      plt.ylabel("Values")
-      plt.legend()
+      # # Plotting the results
+      # plt.figure(figsize=(10, 6))
+      # plt.plot(y_test_flattened, label="Ground Truth", color='blue')  # Assuming y_test_flattened is defined
+      # plt.plot(y_pred_flattened, label="Predicted", color='red')  # Assuming y_pred_flattened is defined
+      # plt.title(f"{symbol} - {mode}: Ground Truth vs Predicted")
+      # plt.xlabel("Time Steps")
+      # plt.ylabel("Values")
+      # plt.legend()
 
-      # Save the plot as a PDF in the 'plot_saved' folder
-      plt.savefig(os.path.join("plot_saved", f"{symbol}_{mode}_{num_stocks}.pdf"))
+      # # Save the plot as a PDF in the 'plot_saved' folder
+      # plt.savefig(os.path.join("plot_saved", f"{symbol}_{mode}_{num_stocks}.pdf"))
 
 
       # 创建一个形状为 [-1, 4] 的全零数组
@@ -328,7 +360,7 @@ def eval_model(model, data_test, symbol, mode, num_csvs, scaler_X, scaler_Y):
       eval_df_save_path = os.path.join(saving_folder, f'{symbol}_{mode}_{date_str}_eval_data.csv')
       eval_df.to_csv(eval_df_save_path, index=False)
       print(f"saved predictions and evals to {predicted_data_results_save_path} and {eval_df_save_path}")
-      return y_test_flattened, y_pred_flattened
+      return y_test_flattened, y_pred_flattened, metrics
    
 
 

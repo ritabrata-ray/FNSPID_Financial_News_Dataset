@@ -14,6 +14,7 @@ from tqdm import tqdm
 import glob
 from tst.model_based_portfolio import *
 from run_8layer import *
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def load_model(model_path, d_input=None, mode=None, num_csvs=None, N=None):
     """
@@ -78,28 +79,57 @@ print("I am the edited file.")
 
 
 
-def sentiment_predict(csv_data,symbol, num_csvs, pred_flag, pred_names):
+def sentiment_predict_(csv_data,symbol, num_csvs, pred_flag, pred_names):
   mode = 'Sentiment'
-  d_input = 4  # this one should be 4 assume it is 'Volume','Open', 'Close', 'Scaled_sentiment'
+  d_input = 4   # 'Volume','Open', 'Close', 'Scaled_sentiment'
+  # Preparing the data for the model
   # Selecting relevant columns: 'Volume', 'Open', 'Close', and 'Scaled_sentiment'
-  data = csv_data[['Volume', 'Open', 'Close', 'Scaled_sentiment']].values
-  dataloader_train, dataloader_test, scaler_X, scaler_Y = data_processor(data)
-  model = train_model(dataloader_train, pred_flag, symbol ,num_csvs, mode, d_input)
+  data = csv_data[['Volume', 'Open', 'Open','Scaled_sentiment']].values
+  dataloader_train, dataloader_test, scaler_X, scaler_Y = data_processor(data, 4)
+  d_output = 1 # prediction length be 3, this is confirmed
+  d_model = 32 # Lattent dim
+  q = 8 # Query size
+  v = 8 # Value size
+  h = 8 # Number of heads
+  N = 8 # Number of encoder and decoder to stack
 
-  if pred_flag:
-    if symbol in pred_names:
-      eval_model(data, model, dataloader_test, symbol, mode, num_csvs, scaler_X, scaler_Y)
+  attention_size = 512 # Attention window size
+  dropout = 0.1 # Dropout rate
+  pe = 'regular' # Positional encoding
+  chunk_mode = None
+  # Creating sequences
 
-def nonsentiment_predict(csv_data,symbol, num_csvs, pred_flag, pred_names):
+  # Creating the model
+  model = Transformer(4, d_model, d_output, q, v, h, N, attention_size=attention_size, dropout=dropout, chunk_mode=chunk_mode, pe=None).to(device)
+  model.load_state_dict(torch.load('model_saved/Sentiment_25_8layers_ssm.pt'))
+#   model = train_model(dataloader_train, pred_flag, symbol ,num_csvs, mode, d_input)
+  return eval_model(model, dataloader_test, symbol, mode, num_csvs, scaler_X, scaler_Y), scaler_X, scaler_Y, dataloader_train
+
+def nonsentiment_predict_(csv_data,symbol, num_csvs, pred_flag, pred_names):
   mode = 'Nonsentiment'
   d_input = 3   # 'Volume','Open', 'Close', 'Scaled_sentiment'
   # Preparing the data for the model
   # Selecting relevant columns: 'Volume', 'Open', 'Close', and 'Scaled_sentiment'
-  data = csv_data[['Volume', 'Open', 'Close']].values
-  dataloader_train, dataloader_test, scaler_X, scaler_Y = data_processor(data)
-  model = load_model('model_saved/Nonsentiment_25_8layers_ssm.pt')
+  data = csv_data[['Volume', 'Open', 'Open']].values
+  dataloader_train, dataloader_test, scaler_X, scaler_Y = data_processor(data, 3)
+  d_output = 1 # prediction length be 3, this is confirmed
+  d_model = 32 # Lattent dim
+  q = 8 # Query size
+  v = 8 # Value size
+  h = 8 # Number of heads
+  N = 8 # Number of encoder and decoder to stack
 
-  return eval_model(model, dataloader_test, symbol, mode, num_csvs, scaler_X, scaler_Y)
+  attention_size = 512 # Attention window size
+  dropout = 0.1 # Dropout rate
+  pe = 'regular' # Positional encoding
+  chunk_mode = None
+  # Creating sequences
+
+  # Creating the model
+  model = Transformer(3, d_model, d_output, q, v, h, N, attention_size=attention_size, dropout=dropout, chunk_mode=chunk_mode, pe=None).to(device)
+  model.load_state_dict(torch.load('model_saved/Nonsentiment_25_8layers_ssm.pt'))
+#   model = train_model(dataloader_train, pred_flag, symbol ,num_csvs, mode, d_input)
+  return eval_model(model, dataloader_test, symbol, mode, num_csvs, scaler_X, scaler_Y), scaler_X, scaler_Y, dataloader_train
   return None, None
 
 
@@ -129,7 +159,7 @@ names_1 = ['GOOG.csv']
 # pred_names = ['fakedata']
 
 
-names = names_1
+names = names_25
 pred_names = names
 # num_stocks = 1
 num_stocks = len(names)
@@ -140,8 +170,11 @@ num_stocks = len(names)
 
 if_pred = True
   # for sentiment_type in sentiment_types:
-trues = []
-predicted = []
+trues_n = []
+predicted_n = []
+historicals_n = []
+dir_acc_n = []
+corr_n = []
 for name in names:
       # Checking if GPU is available
       device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -149,15 +182,90 @@ for name in names:
 
       csv_data = read_csv_case_insensitive(os.path.join("data", name))
       symbol_name = name.split('.')[0]
-      print(symbol_name)
+      print(symbol_name, "=============================")
       # sentiment_predict(csv_data, symbol_name, num_stocks, if_pred, pred_names)
-      y_true, y_pred = nonsentiment_predict(csv_data, symbol_name, num_stocks, True, names)
-      trues.append(y_true)
-      predicted.append(y_pred)
-    # print(trues[0].shape)
-min_days = min(a.shape[0] for a in trues)
-trues = np.array([a[:min_days].squeeze() for a in trues])
-min_days = min(a.shape[0] for a in predicted)
-predicted = np.array([a[:min_days].squeeze() for a in predicted])
+      y, scaler_X, scaler_Y, dataloader_train = nonsentiment_predict_(csv_data, symbol_name, num_stocks, True, names)
+      y_true = scaler_Y.inverse_transform(y[0])
+      y_pred = scaler_Y.inverse_transform(y[1])
+      # breakpoint()
+      trues_n.append(y_true)
+      predicted_n.append(y_pred)
+      historicals_n.append(scaler_Y.inverse_transform(dataloader_train[1].squeeze(0).cpu().numpy()))
+      print(y[2])
+      dir_acc_n.append(y[2]["dir_acc"])
+      corr_n.append(y[2]["R2"])
+trues_s = []
+predicted_s = []
+historicals_s = []
+dir_acc_s = []
+corr_s = []
+for name in names:
+      # Checking if GPU is available
+      device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+      print('device = ',device)
 
-print(portfolio_final_wealth(trues,trues,predicted))
+      csv_data = read_csv_case_insensitive(os.path.join("data", name))
+      symbol_name = name.split('.')[0]
+      print(symbol_name, "=============================")
+      # sentiment_predict(csv_data, symbol_name, num_stocks, if_pred, pred_names)
+      y, scaler_X, scaler_Y, dataloader_train = sentiment_predict_(csv_data, symbol_name, num_stocks, True, names)
+      y_true = scaler_Y.inverse_transform(y[0])
+      y_pred = scaler_Y.inverse_transform(y[1])
+      # breakpoint()
+      trues_s.append(y_true)
+      predicted_s.append(y_pred)
+      historicals_s.append(scaler_Y.inverse_transform(dataloader_train[1].squeeze(0).cpu().numpy()))
+      print(y[2])
+      dir_acc_s.append(y[2]["dir_acc"])
+      corr_s.append(y[2]["R2"])
+
+
+def plot_lines(*ys):
+    """
+    Takes in one or more lists (or arrays) and plots them as separate line plots.
+    The x-axis is the index of each list.
+
+    Args:
+        *ys: Any number of lists or arrays of equal or unequal length
+    """
+    for i, y in enumerate(ys):
+        plt.plot(range(len(y)), y, label=f"Line {i+1}")
+    
+    plt.xlabel("Index")
+    plt.ylabel("Value")
+    plt.title("Line Plot")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+def prepare_and_portfolio(historicals, true, predicted, min_days=200):
+    new_predicted = []
+    new_true = []
+    new_historicals = []
+
+    for p, t, h in zip(predicted, true, historicals):
+        if p.shape[0] >= min_days:
+            new_predicted.append(p[:min_days])
+            new_true.append(t[:min_days])
+            new_historicals.append(h[:min_days])
+    # result = portfolio_final_wealth(np.stack(new_historicals,axis=0).squeeze(2),np.stack(new_true, axis=0).squeeze(2),np.stack(new_predicted, axis=0).squeeze(2))
+    result = online_newton_step_portfolio(np.stack(new_true,axis=0).squeeze(2))
+    # print(result["sharpe_ratio"], result["final_wealth"])
+    
+    
+# plot_lines(corr_n, corr_s)
+# plot_lines(dir_acc_n, dir_acc_s)
+# prepare_and_portfolio(historicals_n, trues_n, predicted_n)
+# prepare_and_portfolio(historicals_s, trues_s, predicted_s)
+prepare_and_portfolio(historicals_s, trues_s, predicted_s)
+
+#     print(trues[0].shape)
+# min_days = min(a.shape[0] for a in trues)
+# trues = np.array([a[:min_days].squeeze() for a in trues])
+# min_days = min(a.shape[0] for a in predicted)
+# predicted = np.array([a[:min_days].squeeze() for a in predicted])
+# min_days = min(a.shape[0] for a in historicals)
+# historicals = np.array([a[:min_days].squeeze() for a in historicals])
+# breakpoint()
+# result = portfolio_final_wealth(historicals,trues,predicted)
+# print(result["sharpe_ratio"], result["final_wealth"])
