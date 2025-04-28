@@ -4,20 +4,20 @@ import scipy.optimize as sco
 import matplotlib.pyplot as plt
 
 def negative_sharpe_ratio(weights, expected_returns, cov_matrix, risk_free_rate=0.0):
-    portfolio_return = np.sum(weights * expected_returns)
-    portfolio_volatility = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
+    portfolio_return = np.sum(weights * expected_returns)  # this is expected profit for the next day.
+    portfolio_volatility = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))  # we need to reduce volatility as well. This is like a standard deviation on the net margin we make/lose.
     if portfolio_volatility < 1e-8:
-        return 1e6  # penalize near-zero volatility portfolios
+        return 1e6  # penalize near-zero volatility portfolios, to prevent divide by zero infinity cases we clip at 1e+6.
     return -(portfolio_return - risk_free_rate) / portfolio_volatility
 
 def optimize_portfolio(expected_returns, cov_matrix):
     N = len(expected_returns)
 
-    constraints = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
-    bounds = tuple((0, 1) for _ in range(N))
-    initial_weights = np.array([1/N] * N)
-
-    result = sco.minimize(
+    constraints = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1}) # to ensure x stays in the simplex.
+    bounds = tuple((0, 1) for _ in range(N))  # also x ensures x stays in simplex. negative x_i's would imply short-selling which we don't permit here.
+    initial_weights = np.array([1/N] * N) #weights initialization.
+    # the following line solves using SLSQP optimization method to minimize negative sharpe ratio subject to the x lies in simplex constraint.
+    result = sco.minimize(                             
         negative_sharpe_ratio,
         initial_weights,
         args=(expected_returns, cov_matrix),
