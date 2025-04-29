@@ -193,7 +193,7 @@ for name in names:
       historicals_n.append(scaler_Y.inverse_transform(dataloader_train[1].squeeze(0).cpu().numpy()))
       print(y[2])
       dir_acc_n.append(y[2]["dir_acc"])
-      corr_n.append(y[2]["R2"])
+      corr_n.append(y[2]["R2"])  #Pearson correlation coefficient for non-sentiment
 trues_s = []
 predicted_s = []
 historicals_s = []
@@ -217,7 +217,7 @@ for name in names:
       historicals_s.append(scaler_Y.inverse_transform(dataloader_train[1].squeeze(0).cpu().numpy()))
       print(y[2])
       dir_acc_s.append(y[2]["dir_acc"])
-      corr_s.append(y[2]["R2"])
+      corr_s.append(y[2]["R2"]) #Pearson correlation coefficient when evaluated with sentiment
 
 
 def plot_lines(*ys):
