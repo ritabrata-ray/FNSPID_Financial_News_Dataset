@@ -89,7 +89,7 @@ def backtest_portfolio(N, historical, predicted, window=60):
         'weights': weights_matrix,
         'daily_returns': returns
     }
-def portfolio_final_wealth(historical_returns, true_returns, predicted_returns, risk_free_rate=0.0):
+def portfolio_final_wealth(historical_returns, true_returns, predicted_returns, risk_free_rate=0.0): # this function calculates the final accummulated wealth till the horizon T as explained in the report.
     historical_returns = historical_returns.T
     true_returns = true_returns.T
     predicted_returns = predicted_returns.T
@@ -162,7 +162,7 @@ def portfolio_final_wealth(historical_returns, true_returns, predicted_returns, 
 
 
 
-def online_newton_step_portfolio(returns, risk_free_rate=0.0, learning_rate=0.1, delta=1.0):
+def online_newton_step_portfolio(returns, risk_free_rate=0.0, learning_rate=0.1, delta=1.0): # this is the ONS algorithm (see the final report) for maximizing the sharpe ratio and iteratively compute x_t till the horizon.
     """
     Optimize a portfolio using the Online Newton Step method to maximize Sharpe ratio.
     
@@ -245,7 +245,7 @@ def online_newton_step_portfolio(returns, risk_free_rate=0.0, learning_rate=0.1,
     
     return weights_history, weights
 
-def project_simplex(v):
+def project_simplex(v):  # the ONS algorithm (pseudocode in the final report) needs a projection into the convex set after the gradient descent step. This is the projection to simplex (our convex set here) function.
     """
     Project a vector onto the probability simplex (sum to 1, all non-negative).
     """
