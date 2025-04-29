@@ -75,11 +75,11 @@ def load_model(model_path, d_input=None, mode=None, num_csvs=None, N=None):
 
 #model = load_model('model_saved/Nonsentiment_25_8layers_ssm.pt')
 
-print("I am the edited file.")
+# print("I am the edited file.")
 
 
 
-def sentiment_predict_(csv_data,symbol, num_csvs, pred_flag, pred_names):
+def sentiment_predict_(csv_data,symbol, num_csvs, pred_flag, pred_names): # it loads a trained SSM model and evaluates it while also incorporating the FNSPID's sentinment information.
   mode = 'Sentiment'
   d_input = 4   # 'Volume','Open', 'Close', 'Scaled_sentiment'
   # Preparing the data for the model
@@ -105,7 +105,7 @@ def sentiment_predict_(csv_data,symbol, num_csvs, pred_flag, pred_names):
 #   model = train_model(dataloader_train, pred_flag, symbol ,num_csvs, mode, d_input)
   return eval_model(model, dataloader_test, symbol, mode, num_csvs, scaler_X, scaler_Y), scaler_X, scaler_Y, dataloader_train
 
-def nonsentiment_predict_(csv_data,symbol, num_csvs, pred_flag, pred_names):
+def nonsentiment_predict_(csv_data,symbol, num_csvs, pred_flag, pred_names): #It loads and evaluates without considering the news sentiment data, just pure numeric stock prices.
   mode = 'Nonsentiment'
   d_input = 3   # 'Volume','Open', 'Close', 'Scaled_sentiment'
   # Preparing the data for the model
@@ -126,13 +126,13 @@ def nonsentiment_predict_(csv_data,symbol, num_csvs, pred_flag, pred_names):
   # Creating sequences
 
   # Creating the model
-  model = Transformer(3, d_model, d_output, q, v, h, N, attention_size=attention_size, dropout=dropout, chunk_mode=chunk_mode, pe=None).to(device)
+  model = Transformer(3, d_model, d_output, q, v, h, N, attention_size=attention_size, dropout=dropout, chunk_mode=chunk_mode, pe=None).to(device) #even though it loads model from transformer.py the ssm model is written here in the transformer.py file. We apologize for the confusing file names.
   model.load_state_dict(torch.load('model_saved/Nonsentiment_25_8layers_ssm.pt'))
 #   model = train_model(dataloader_train, pred_flag, symbol ,num_csvs, mode, d_input)
   return eval_model(model, dataloader_test, symbol, mode, num_csvs, scaler_X, scaler_Y), scaler_X, scaler_Y, dataloader_train
   return None, None
 
-
+# We can choose to do evaluation on 1, 5, 25, or 50 stock(s). We can choose either of the names_x variable for that purpose.
 # Test of 5 
 # names_5 = ['KO.csv', 'AMD.csv', 'TSM.csv', 'GOOG.csv','WMT.csv']
 names_5 = ['KO.csv', 'AMD.csv', 'TSM.csv','WMT.csv']
@@ -238,7 +238,7 @@ def plot_lines(*ys):
     plt.grid(True)
     plt.show()
 
-def prepare_and_portfolio(historicals, true, predicted, min_days=200):
+def prepare_and_portfolio(historicals, true, predicted, min_days=200): # this function obtains the final accummulated wealth for the ONS baseline to get the numer reported in our final report.
     new_predicted = []
     new_true = []
     new_historicals = []
